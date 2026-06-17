@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 7%;
+    --foreground: 45 30% 92%;
+    --card: 220 18% 11%;
+    --card-foreground: 45 30% 92%;
+    --popover: 220 18% 11%;
+    --popover-foreground: 45 30% 92%;
+    --primary: 45 60% 78%;
+    --primary-foreground: 220 20% 7%;
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 45 30% 85%;
+    --muted: 220 15% 15%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 45 60% 78%;
+    --accent-foreground: 220 20% 7%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 45 30% 92%;
+    --border: 220 15% 20%;
+    --input: 220 15% 18%;
+    --ring: 45 60% 78%;
+    --radius: 0.75rem;
+    --font-heading: 'Playfair Display', serif;
+    --font-body: 'Inter', sans-serif;
+    --font-display: 'Playfair Display', serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sidebar-background: 220 20% 5%;
+    --sidebar-foreground: 45 30% 85%;
+    --sidebar-primary: 45 60% 78%;
+    --sidebar-primary-foreground: 220 20% 7%;
+    --sidebar-accent: 220 15% 14%;
+    --sidebar-accent-foreground: 45 30% 85%;
+    --sidebar-border: 220 15% 16%;
+    --sidebar-ring: 45 60% 78%;
+
+    /* Custom app tokens */
+    --ivory: 45 50% 94%;
+    --gold: 45 60% 62%;
+    --deep-navy: 220 25% 5%;
+    --key-white: 0 0% 96%;
+    --key-black: 220 15% 12%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+
+  h1, h2, h3 {
+    @apply font-heading;
+  }
+}
+
+/* Sheet music staff lines */
+.staff-line {
+  background: hsl(45 20% 60% / 0.6);
+  height: 1px;
+}
+
+/* Piano key animations */
+.piano-key-white {
+  transition: all 0.08s ease;
+}
+.piano-key-white:active,
+.piano-key-white.pressed {
+  background: hsl(var(--gold) / 0.4) !important;
+  transform: scaleY(1.02);
+  transform-origin: top;
+}
+
+.piano-key-black {
+  transition: all 0.08s ease;
+}
+.piano-key-black:active,
+.piano-key-black.pressed {
+  background: hsl(var(--gold) / 0.8) !important;
+}
+
+/* Pulse animation for listening indicator */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 hsl(45 60% 62% / 0.4); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px hsl(45 60% 62% / 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 hsl(45 60% 62% / 0); }
+}
+.pulse-ring { animation: pulse-ring 1.5s ease infinite; }
+
+/* Shimmer loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--secondary)) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Note bounce */
+@keyframes note-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.note-bounce { animation: note-bounce 0.6s ease; }
+
+/* Streak fire flicker */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+.flicker { animation: flicker 0.8s ease infinite; }
