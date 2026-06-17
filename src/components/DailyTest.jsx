@@ -11,9 +11,11 @@ import { loadCalibration } from "@/components/PianoCalibration";
 import { applyAnswerNote, createAnswerState, getAnswerPreviewNotes } from "@/lib/answerEngine";
 
 const PASS_COUNT = 10; // correct in a row to pass
+const testHandForLevel = (level) => level >= 12 ? "both" : "right";
+const generateTestExercise = (level) => generateExercise(level, testHandForLevel(level), { depth: 9 });
 
 export default function DailyTest({ level, title, subtitle, onPass, onSkip }) {
-  const [puzzle, setPuzzle] = useState(() => generateExercise(level));
+  const [puzzle, setPuzzle] = useState(() => generateTestExercise(level));
   const [detectedNotes, setDetectedNotes] = useState([]);
   const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
   const [result, setResult] = useState(null); // "correct" | "wrong"
@@ -99,7 +101,7 @@ export default function DailyTest({ level, title, subtitle, onPass, onSkip }) {
     resultTimeout.current = setTimeout(() => {
       setResult(null);
       setIsFlipped(false);
-      setPuzzle(generateExercise(level));
+      setPuzzle(generateTestExercise(level));
     }, 800);
   };
 
@@ -240,7 +242,7 @@ export default function DailyTest({ level, title, subtitle, onPass, onSkip }) {
             {isListening ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
             {isListening ? "Listening…" : "Enable Mic"}
           </button>
-          <button onClick={() => { clearTimeout(resultTimeout.current); stopPlayback(); puzzleNotesBuffer.current = createAnswerState(); setDetectedNotes([]); setIsFlipped(false); setPuzzle(generateExercise(level)); setResult(null); }}
+          <button onClick={() => { clearTimeout(resultTimeout.current); stopPlayback(); puzzleNotesBuffer.current = createAnswerState(); setDetectedNotes([]); setIsFlipped(false); setPuzzle(generateTestExercise(level)); setResult(null); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
             <ChevronRight className="w-3.5 h-3.5" /> Skip Puzzle
           </button>
