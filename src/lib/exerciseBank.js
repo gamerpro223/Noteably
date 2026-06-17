@@ -5,6 +5,8 @@
 
 import { note, rest, makeExercise } from "./musicData.js";
 import { generateRuleBasedExercise, generateRuleBasedChopinExercise } from "./levelGenerator.js";
+import { generateCurriculumExercise } from "./curriculumGenerator.js";
+import { minNotesFor } from "./curriculum.js";
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function pickN(arr, n) {
@@ -1375,6 +1377,13 @@ function validateExercise(ex, requestedHand = "right") {
   if (!ex || !ex.measures || ex.measures.length === 0) return false;
   const notes = ex.notes || [];
   if (notes.length === 0) return false;
+  const noteCount = (ex.measures || []).reduce((total, measure) => {
+    return total + ["rightHand", "leftHand"].reduce((sum, handKey) => {
+      return sum + (measure[handKey] || []).reduce((eventTotal, event) => {
+        return eventTotal + (!event.rest ? event.keys?.length || 0 : 0);
+      }, 0);
+    }, 0);
+  }, 0);
   const hasRH = hasHandNotes(ex, "right");
   const hasLH = hasHandNotes(ex, "left");
   if (requestedHand === "both") {
@@ -1386,6 +1395,7 @@ function validateExercise(ex, requestedHand = "right") {
   }
   // High levels (10+) must have more than 1 unique note
   if ((ex.level || 0) >= 10 && notes.length <= 1) return false;
+  if (noteCount < minNotesFor(ex.level || 1, 0)) return false;
   return true;
 }
 
@@ -1418,46 +1428,40 @@ export function generateExercise(level, hand = "right", options = {}) {
   const requestedHand = hand === "left" ? "left" : hand === "both" ? "both" : "right";
   const depth = Math.max(0, Math.min(9, Number(options.depth) || 0));
 
-  // Rule-based generator is the preferred path; originals remain as fallback anchors.
   let exercise = null;
-  // For levels 6-8 use the expanded pool for more variety
-  const pool = l === 6 ? POOL_6 : l === 7 ? POOL_7 : l === 8 ? POOL_8 : null;
-  const useVariant = Math.random() > 0.5 && VARIANT_GENERATORS[l];
-  const primaryGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? VARIANT_GENERATORS[l] : GENERATORS[l]);
-  const fallbackGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? GENERATORS[l] : (VARIANT_GENERATORS[l] || GENERATORS[l]));
   const candidates = [
-    () => generateRuleBasedExercise(l, requestedHand, { depth }),
-    () => generateRuleBasedExercise(l, requestedHand, { depth }),
-    () => generateRuleBasedExercise(l, requestedHand, { depth }),
-    primaryGen,
-    fallbackGen,
-    GENERATORS[l],
-    VARIANT_GENERATORS[l],
+    () => generateCurriculumExercise(l, requestedHand, { depth }),
+    () => generateCurriculumExercise(l, requestedHand, { depth: Math.min(9, depth + 1) }),
+    () => generateCurriculumExercise(l, requestedHand, { depth: Math.max(0, depth - 1) }),
+    () => generateCurriculumExercise(l, requestedHand, { depth: Math.min(9, depth + 2) }),
+    () => generateRuleBasedExercise(l, requestedHand, { depth: Math.min(9, depth + 2) }),
   ].filter(Boolean);
 
   try {
-    exercise = candidates[0] ? candidates[0](requestedHand) : gen1(requestedHand);
+    exercise = candidates[0] ? candidates[0]() : null;
   } catch (e) {
     exercise = null;
   }
 
-  // Anti-repetition + validation: try several generator recipes before fallback.
+  // Anti-repetition + validation: stay on the strict curriculum path unless
+  // the generated score passes the hand, level, and note-count contract.
   for (let attempt = 0; attempt < 24; attempt++) {
     const valid = validateExercise(exercise, requestedHand);
     const dup = exercise ? isRecentDuplicate(exercise) : true;
     if (valid && !dup) break;
     try {
       const altGen = candidates[attempt % candidates.length];
-      exercise = altGen ? altGen(requestedHand) : null;
+      exercise = altGen ? altGen() : null;
     } catch (e) { exercise = null; }
   }
 
-  // Final fallback: if we still have nothing valid, use original generator unconditionally
+  // Final fallback stays strict so harder levels cannot collapse into a
+  // beginner single-note exercise.
   if (!validateExercise(exercise, requestedHand)) {
     try {
-      exercise = generateRuleBasedExercise(l, requestedHand, { depth });
+      exercise = generateCurriculumExercise(l, requestedHand, { depth: 9 });
     } catch (e) {
-      exercise = gen1(requestedHand);
+      exercise = generateCurriculumExercise(1, requestedHand, { depth: 0 });
     }
   }
 
