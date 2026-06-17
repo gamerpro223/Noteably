@@ -1,0 +1,32 @@
+{
+  "name": "PracticeSession",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the practice session"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "description": "Total practice time in seconds"
+    },
+    "puzzles_completed": {
+      "type": "integer",
+      "description": "Number of puzzles completed"
+    },
+    "puzzles_correct": {
+      "type": "integer",
+      "description": "Number of puzzles answered correctly on first try"
+    },
+    "xp_earned": {
+      "type": "integer",
+      "description": "XP earned this session"
+    }
+  },
+  "required": [
+    "date",
+    "duration_seconds",
+    "puzzles_completed"
+  ]
+}

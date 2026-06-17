@@ -1,0 +1,34 @@
+{
+  "name": "Subscription",
+  "type": "object",
+  "properties": {
+    "checkout_id": {
+      "type": "string",
+      "description": "Wix checkout session ID \u2014 used to correlate webhook to this pending record"
+    },
+    "subscription_id": {
+      "type": "string",
+      "description": "Wix subscription ID from order_approved webhook lineItems[].subscriptionInfo.id"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Authenticated user email at checkout time \u2014 authoritative, do not overwrite from webhook"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "canceled",
+        "ended"
+      ],
+      "default": "pending",
+      "description": "Subscription status"
+    }
+  },
+  "required": [
+    "checkout_id",
+    "user_email",
+    "status"
+  ]
+}
