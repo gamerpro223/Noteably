@@ -1413,9 +1413,10 @@ const GENERATORS = [null, gen1, gen2, gen3, gen4, gen5, gen6, gen7, gen8, gen9, 
 const VARIANT_GENERATORS = [null, gen1b, gen2b, gen3b, gen4b, gen5b, gen6b, gen7b, gen8b, gen9b, gen10b,
   gen11b, gen12b, gen13b, gen14b, gen15b, gen16b, gen17b, gen18b, gen19b, gen20b];
 
-export function generateExercise(level, hand = "right") {
+export function generateExercise(level, hand = "right", options = {}) {
   const l = Math.max(1, Math.min(20, level));
   const requestedHand = hand === "left" ? "left" : hand === "both" ? "both" : "right";
+  const depth = Math.max(0, Math.min(9, Number(options.depth) || 0));
 
   // Rule-based generator is the preferred path; originals remain as fallback anchors.
   let exercise = null;
@@ -1425,9 +1426,9 @@ export function generateExercise(level, hand = "right") {
   const primaryGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? VARIANT_GENERATORS[l] : GENERATORS[l]);
   const fallbackGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? GENERATORS[l] : (VARIANT_GENERATORS[l] || GENERATORS[l]));
   const candidates = [
-    () => generateRuleBasedExercise(l, requestedHand),
-    () => generateRuleBasedExercise(l, requestedHand),
-    () => generateRuleBasedExercise(l, requestedHand),
+    () => generateRuleBasedExercise(l, requestedHand, { depth }),
+    () => generateRuleBasedExercise(l, requestedHand, { depth }),
+    () => generateRuleBasedExercise(l, requestedHand, { depth }),
     primaryGen,
     fallbackGen,
     GENERATORS[l],
@@ -1454,7 +1455,7 @@ export function generateExercise(level, hand = "right") {
   // Final fallback: if we still have nothing valid, use original generator unconditionally
   if (!validateExercise(exercise, requestedHand)) {
     try {
-      exercise = generateRuleBasedExercise(l, requestedHand);
+      exercise = generateRuleBasedExercise(l, requestedHand, { depth });
     } catch (e) {
       exercise = gen1(requestedHand);
     }

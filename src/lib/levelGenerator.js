@@ -1,4 +1,5 @@
 import { note, rest, makeExercise, DURATION_BEATS, midiToKey } from "./musicData.js";
+import { generateRepertoireExercise } from "./repertoireLibrary.js";
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -468,10 +469,17 @@ function twoHandLevel(level, key) {
   });
 }
 
-export function generateRuleBasedExercise(level, hand = "right") {
+export function generateRuleBasedExercise(level, hand = "right", options = {}) {
   const l = Math.max(1, Math.min(20, Number(level) || 1));
   const key = keyForLevel(l);
   const requestedHand = hand === "left" ? "left" : hand === "both" ? "both" : "right";
+  const depth = Math.max(0, Math.min(9, Number(options.depth) || 0));
+
+  if (depth > 0 || Math.random() < 0.65) {
+    try {
+      return generateRepertoireExercise({ level: l, hand: requestedHand, depth });
+    } catch {}
+  }
 
   if (requestedHand === "both") {
     if (l <= 11) {
