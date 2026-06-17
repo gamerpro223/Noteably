@@ -1366,15 +1366,23 @@ function fingerprint(ex) {
 }
 
 // Validate exercise before showing — returns true if safe to display
-function validateExercise(ex) {
+function hasHandNotes(ex, hand) {
+  const handKey = hand === "left" ? "leftHand" : "rightHand";
+  return ex?.measures?.some(m => (m[handKey] || []).some(e => !e.rest && e.keys.length > 0));
+}
+
+function validateExercise(ex, requestedHand = "right") {
   if (!ex || !ex.measures || ex.measures.length === 0) return false;
   const notes = ex.notes || [];
   if (notes.length === 0) return false;
-  // Both-hands mode must have content in both hands
-  if (ex.mode === "both") {
-    const hasRH = ex.measures.some(m => (m.rightHand || []).some(e => !e.rest && e.keys.length > 0));
-    const hasLH = ex.measures.some(m => (m.leftHand  || []).some(e => !e.rest && e.keys.length > 0));
-    if (!hasRH || !hasLH) return false;
+  const hasRH = hasHandNotes(ex, "right");
+  const hasLH = hasHandNotes(ex, "left");
+  if (requestedHand === "both") {
+    if (!hasRH || !hasLH || ex.mode !== "both") return false;
+  } else if (requestedHand === "left") {
+    if (!hasLH || hasRH || ex.mode !== "left") return false;
+  } else {
+    if (!hasRH || hasLH || ex.mode !== "right") return false;
   }
   // High levels (10+) must have more than 1 unique note
   if ((ex.level || 0) >= 10 && notes.length <= 1) return false;
@@ -1407,19 +1415,19 @@ const VARIANT_GENERATORS = [null, gen1b, gen2b, gen3b, gen4b, gen5b, gen6b, gen7
 
 export function generateExercise(level, hand = "right") {
   const l = Math.max(1, Math.min(20, level));
-  // Levels 12 is always left-hand; levels 13+ are always both-hands (grand staff).
-  // For levels 1–11, respect the user's hand selection.
-  const effectiveHand = l === 12 ? "left" : l >= 13 ? "both" : hand;
+  const requestedHand = hand === "left" ? "left" : hand === "both" ? "both" : "right";
 
   // Rule-based generator is the preferred path; originals remain as fallback anchors.
   let exercise = null;
   // For levels 6-8 use the expanded pool for more variety
   const pool = l === 6 ? POOL_6 : l === 7 ? POOL_7 : l === 8 ? POOL_8 : null;
   const useVariant = Math.random() > 0.5 && VARIANT_GENERATORS[l];
-  const primaryGen = pool ? pick(pool) : (useVariant ? VARIANT_GENERATORS[l] : GENERATORS[l]);
-  const fallbackGen = pool ? pick(pool) : (useVariant ? GENERATORS[l] : (VARIANT_GENERATORS[l] || GENERATORS[l]));
+  const primaryGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? VARIANT_GENERATORS[l] : GENERATORS[l]);
+  const fallbackGen = pool && requestedHand !== "both" ? pick(pool) : (useVariant ? GENERATORS[l] : (VARIANT_GENERATORS[l] || GENERATORS[l]));
   const candidates = [
-    () => generateRuleBasedExercise(l, effectiveHand),
+    () => generateRuleBasedExercise(l, requestedHand),
+    () => generateRuleBasedExercise(l, requestedHand),
+    () => generateRuleBasedExercise(l, requestedHand),
     primaryGen,
     fallbackGen,
     GENERATORS[l],
@@ -1427,28 +1435,28 @@ export function generateExercise(level, hand = "right") {
   ].filter(Boolean);
 
   try {
-    exercise = candidates[0] ? candidates[0](effectiveHand) : gen1(effectiveHand);
+    exercise = candidates[0] ? candidates[0](requestedHand) : gen1(requestedHand);
   } catch (e) {
     exercise = null;
   }
 
   // Anti-repetition + validation: try several generator recipes before fallback.
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const valid = validateExercise(exercise);
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const valid = validateExercise(exercise, requestedHand);
     const dup = exercise ? isRecentDuplicate(exercise) : true;
     if (valid && !dup) break;
     try {
       const altGen = candidates[attempt % candidates.length];
-      exercise = altGen ? altGen(effectiveHand) : null;
+      exercise = altGen ? altGen(requestedHand) : null;
     } catch (e) { exercise = null; }
   }
 
   // Final fallback: if we still have nothing valid, use original generator unconditionally
-  if (!validateExercise(exercise)) {
+  if (!validateExercise(exercise, requestedHand)) {
     try {
-      exercise = (GENERATORS[l] || gen1)(effectiveHand);
+      exercise = generateRuleBasedExercise(l, requestedHand);
     } catch (e) {
-      exercise = gen1(effectiveHand);
+      exercise = gen1(requestedHand);
     }
   }
 
