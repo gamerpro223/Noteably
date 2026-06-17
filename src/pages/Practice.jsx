@@ -21,12 +21,26 @@ const CHOPIN_LEVEL = 20;
 const CHOPIN_TIME_LIMIT = 8;
 const DEFAULT_TIME_LIMIT = 15;
 const MAX_LEVEL = 20;
-const XP_PER_CORRECT = (level) => 5 + level; // modest XP per answer — no auto level-up
 const HAND_OPTIONS = [
   ["right", "Right"],
   ["left", "Left"],
   ["both", "Both"],
 ];
+
+function levelDepthFromXp(levelXp, level) {
+  const needed = XP_TO_TEST[level] ?? Infinity;
+  if (!Number.isFinite(needed)) return 9;
+  return Math.max(0, Math.min(9, Math.floor(((levelXp || 0) / needed) * 10)));
+}
+
+function puzzleXpFor(level, dailyCompleted) {
+  return dailyCompleted ? 1 : 2 + Math.ceil(level / 5);
+}
+
+function dailyCompletionBonus(level, streak, dailyCompleted) {
+  if (dailyCompleted) return 0;
+  return 70 + level * 12 + Math.min(streak || 0, 14) * 6;
+}
 
 function ProgressDots({ current, total }) {
   return (
@@ -49,6 +63,10 @@ export default function Practice() {
   const [detectedNotes, setDetectedNotes] = useState([]);
   const [result, setResult] = useState(null);
   const [xp, setXp] = useState(0);
+  const [sessionXp, setSessionXp] = useState(0);
+  const [levelXp, setLevelXp] = useState(0);
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [dailyCompletedToday, setDailyCompletedToday] = useState(false);
   const [sessionDone, setSessionDone] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(null);
   const [showLevelSelect, setShowLevelSelect] = useState(false);
@@ -86,6 +104,7 @@ export default function Practice() {
   const isChopin = level === CHOPIN_LEVEL && timerOn;
   const activeTimerOn = timerOn || isChopin;
   const puzzleTimeLimit = isChopin ? CHOPIN_TIME_LIMIT : DEFAULT_TIME_LIMIT;
+  const levelDepth = levelDepthFromXp(levelXp, level);
 
   useEffect(() => {
     const cal = loadCalibration();
@@ -110,12 +129,15 @@ export default function Practice() {
         const records = await base44.entities.UserProgress.list();
         if (records.length > 0) {
           const p = records[0];
+          const today = new Date().toISOString().split("T")[0];
           setLevel(p.current_level || 1);
           setXp(p.total_xp || 0);
+          setLevelXp(p.level_xp || 0);
+          setCurrentStreak(p.current_streak || 0);
+          setDailyCompletedToday(p.last_daily_reward_date === today);
           setProgressId(p.id);
           setShowLevelSelect(false);
           // Check if there's a next-day recap test waiting
-          const today = new Date().toISOString().split("T")[0];
           if (p.recap_test_pending && p.level_test_date !== today) {
             setTestFlow("recap_offer");
           }
@@ -141,7 +163,7 @@ export default function Practice() {
       setRevealedNotes([]);
       setIsFlipped(false);
       setResult(null);
-      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand));
+      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand, { depth: levelDepth }));
       return null;
       }
         return prev - 1;
@@ -163,9 +185,9 @@ export default function Practice() {
 
   useEffect(() => {
     if (!showLevelSelect && isSubscribed === true) {
-      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand));
+      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand, { depth: levelDepth }));
     }
-  }, [showLevelSelect, isSubscribed, level, isChopin]);
+  }, [showLevelSelect, isSubscribed, level, isChopin, levelDepth]);
 
   useEffect(() => {
     if (showLevelSelect || isSubscribed === null || isSubscribed === false) return;
@@ -211,8 +233,10 @@ export default function Practice() {
         const created = await base44.entities.UserProgress.create({
           current_level: startLevel,
           total_xp: 0,
+          level_xp: 0,
           current_streak: 0,
           longest_streak: 0,
+          daily_streak_sessions: 0,
           daily_goal_minutes: 10,
           total_puzzles_completed: 0,
           pending_level_test: false,
@@ -225,35 +249,48 @@ export default function Practice() {
     } catch {}
   }
 
-  async function saveSession(finalCorrect, finalXp) {
+  async function saveSession(finalCorrect, earnedXp) {
     try {
       const isAuth = await base44.auth.isAuthenticated();
-      if (!isAuth) return;
+      if (!isAuth) return null;
       const today = new Date().toISOString().split("T")[0];
       await base44.entities.PracticeSession.create({
         date: today,
         duration_seconds: 0,
         puzzles_completed: finalCorrect,
         puzzles_correct: finalCorrect,
-        xp_earned: finalXp,
+        xp_earned: earnedXp,
       });
       const records = await base44.entities.UserProgress.list();
       if (records.length > 0) {
         const p = records[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-        const newStreak = p.last_practice_date === yesterday ? (p.current_streak || 0) + 1 : 1;
+        const mainDailyReward = p.last_daily_reward_date !== today;
+        const newStreak = mainDailyReward
+          ? p.last_practice_date === yesterday ? (p.current_streak || 0) + 1 : 1
+          : p.current_streak || 0;
+        const newLevelXp = (p.level_xp || 0) + earnedXp;
+        const newTotalXp = (p.total_xp || 0) + earnedXp;
         await base44.entities.UserProgress.update(p.id, {
-          total_xp: (p.total_xp || 0) + finalXp,
+          total_xp: newTotalXp,
+          level_xp: newLevelXp,
           current_streak: newStreak,
           longest_streak: Math.max(p.longest_streak || 0, newStreak),
           last_practice_date: today,
+          last_daily_reward_date: mainDailyReward ? today : p.last_daily_reward_date,
+          daily_streak_sessions: (p.daily_streak_sessions || 0) + (mainDailyReward ? 1 : 0),
           total_puzzles_completed: (p.total_puzzles_completed || 0) + finalCorrect,
-          // Mark a level test as available (end-of-day optional test)
-          pending_level_test: true,
+          pending_level_test: newLevelXp >= (XP_TO_TEST[level] ?? Infinity),
           level_test_date: today,
         });
+        setLevelXp(newLevelXp);
+        setXp(newTotalXp);
+        setCurrentStreak(newStreak);
+        if (mainDailyReward) setDailyCompletedToday(true);
+        return { levelXp: newLevelXp, totalXp: newTotalXp, streak: newStreak };
       }
     } catch {}
+    return null;
   }
 
   async function handleTestPassed() {
@@ -267,12 +304,15 @@ export default function Practice() {
       if (records.length > 0) {
         await base44.entities.UserProgress.update(records[0].id, {
           current_level: newLevel,
+          level_xp: 0,
+          daily_streak_sessions: 0,
           pending_level_test: false,
           recap_test_pending: true, // next day recap
           recap_test_level: level,
         });
       }
     } catch {}
+    setLevelXp(0);
     setTestFlow("none");
     setSessionDone(true);
   }
@@ -355,10 +395,12 @@ export default function Practice() {
     stopTimer();
     stopPlayback();
     setResult("correct");
-    const earnedXp = XP_PER_CORRECT(level);
+    const earnedXp = puzzleXpFor(level, dailyCompletedToday);
     const newCorrect = sessionCorrect + 1;
+    const newSessionXp = sessionXp + earnedXp;
     const newXp = xp + earnedXp;
     setSessionCorrect(newCorrect);
+    setSessionXp(newSessionXp);
     setXp(newXp);
     puzzleNotesBuffer.current = createAnswerState();
     setDetectedNotes([]);
@@ -367,11 +409,18 @@ export default function Practice() {
 
     // Session done at CORRECT_TO_STREAK — offer test only if user has enough XP for the gate
     if (newCorrect >= CORRECT_TO_STREAK) {
-      resultTimeout.current = setTimeout(() => {
+      const bonusXp = dailyCompletionBonus(level, currentStreak, dailyCompletedToday);
+      const finalSessionXp = newSessionXp + bonusXp;
+      const projectedLevelXp = levelXp + finalSessionXp;
+      const projectedTotalXp = xp + finalSessionXp;
+      setSessionXp(finalSessionXp);
+      setXp(projectedTotalXp);
+      resultTimeout.current = setTimeout(async () => {
         setResult(null);
-        saveSession(newCorrect, newXp);
+        const saved = await saveSession(newCorrect, finalSessionXp);
+        const effectiveLevelXp = saved?.levelXp ?? projectedLevelXp;
         const xpNeeded = XP_TO_TEST[level] ?? Infinity;
-        if (newXp >= xpNeeded && level < MAX_LEVEL) {
+        if (effectiveLevelXp >= xpNeeded && level < MAX_LEVEL) {
           setTestFlow("end_of_day_offer");
         } else {
           setSessionDone(true);
@@ -384,7 +433,7 @@ export default function Practice() {
       stopPlayback();
       stopAllNotes();
       setResult(null);
-      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand));
+      setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand, { depth: levelDepth }));
     }, 800);
   }
 
@@ -412,7 +461,7 @@ export default function Practice() {
     setRevealedNotes([]);
     puzzleNotesBuffer.current = createAnswerState();
     setDetectedNotes([]);
-    setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand));
+    setPuzzle(isChopin ? generateChopinExercise(hand) : generateExercise(level, hand, { depth: levelDepth }));
   }
 
   function changeHand(newHand) {
@@ -423,7 +472,7 @@ export default function Practice() {
     puzzleNotesBuffer.current = createAnswerState();
     setDetectedNotes([]);
     setIsFlipped(false);
-    setPuzzle(isChopin ? generateChopinExercise(newHand) : generateExercise(level, newHand));
+    setPuzzle(isChopin ? generateChopinExercise(newHand) : generateExercise(level, newHand, { depth: levelDepth }));
   }
 
   const stopPlayback = useCallback(() => {
@@ -527,7 +576,7 @@ export default function Practice() {
           setIsFlipped(false);
           setResult(null);
           setSessionCorrect(0);
-          setPuzzle(generateExercise(lvl, hand));
+          setPuzzle(generateExercise(lvl, hand, { depth: lvl === level ? levelDepth : 0 }));
           setShowLevelBrowser(false);
           if (lvl !== 20) setTimerOn(false);
         }}
@@ -612,14 +661,14 @@ export default function Practice() {
           <h1 className="font-display text-3xl mb-2">All done for today!</h1>
           <p className="text-muted-foreground mb-8 text-sm">Come back tomorrow to keep your streak going.</p>
           <div className="grid grid-cols-3 gap-4 mb-8">
-            {[{ label: "Correct", value: sessionCorrect }, { label: "XP Earned", value: xp }, { label: "Level", value: level }].map(({ label, value }) => (
+            {[{ label: "Correct", value: sessionCorrect }, { label: "XP Earned", value: sessionXp }, { label: "Level", value: level }].map(({ label, value }) => (
               <div key={label} className="bg-card border border-border rounded-xl p-4">
                 <div className="text-2xl font-heading text-primary">{value}</div>
                 <div className="text-xs text-muted-foreground mt-1">{label}</div>
               </div>
             ))}
           </div>
-          <button onClick={() => { stopPlayback(); stopAllNotes(); setSessionDone(false); setSessionCorrect(0); puzzleNotesBuffer.current = createAnswerState(); setDetectedNotes([]); setRevealedNotes([]); setIsFlipped(false); setResult(null); setPuzzle(generateExercise(level, hand)); }}
+          <button onClick={() => { stopPlayback(); stopAllNotes(); setSessionDone(false); setSessionCorrect(0); setSessionXp(0); puzzleNotesBuffer.current = createAnswerState(); setDetectedNotes([]); setRevealedNotes([]); setIsFlipped(false); setResult(null); setPuzzle(generateExercise(level, hand, { depth: levelDepth })); }}
             className="w-full bg-primary text-primary-foreground font-semibold py-3 rounded-xl mb-3 hover:bg-primary/90 transition-all">
             Keep Practicing
           </button>
@@ -706,7 +755,7 @@ export default function Practice() {
                           <div className="text-center">
                             <CheckCircle className="w-12 h-12 text-primary mx-auto mb-2" />
                             <div className="font-heading text-xl text-primary">Correct!</div>
-                            <div className="text-xs text-muted-foreground mt-1">+{XP_PER_CORRECT(level)} XP</div>
+                            <div className="text-xs text-muted-foreground mt-1">+{puzzleXpFor(level, dailyCompletedToday)} XP</div>
                           </div>
                         </motion.div>
                       )}
