@@ -22,6 +22,11 @@ const CHOPIN_TIME_LIMIT = 8;
 const DEFAULT_TIME_LIMIT = 15;
 const MAX_LEVEL = 20;
 const XP_PER_CORRECT = (level) => 5 + level; // modest XP per answer — no auto level-up
+const HAND_OPTIONS = [
+  ["right", "Right"],
+  ["left", "Left"],
+  ["both", "Both"],
+];
 
 function ProgressDots({ current, total }) {
   return (
@@ -661,21 +666,21 @@ export default function Practice() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col items-center px-4 py-3 gap-3">
-        {/* Hand + level row */}
-        <div className="flex items-center justify-between w-full max-w-lg">
-          <div className="flex items-center gap-1 bg-secondary rounded-xl p-1">
-            {[["right","R. Hand"],["left","L. Hand"],["both","Both"]].map(([h, label]) => (
+        {/* Level + hand controls */}
+        <div className="grid gap-2 w-full max-w-lg">
+          <button onClick={() => setShowLevelBrowser(true)}
+            className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-sm font-medium transition-all hover:border-primary/60 hover:bg-primary/10 ${isChopin ? "bg-red-950/30 border-red-900/60 text-red-400" : "bg-secondary border-border text-foreground"}`}>
+            <span>{isChopin ? "Chopin Mode" : `Level ${level}`}</span>
+            <ChevronRight className="w-4 h-4 opacity-60" />
+          </button>
+          <div className="grid grid-cols-3 gap-1 bg-secondary rounded-xl p-1">
+            {HAND_OPTIONS.map(([h, label]) => (
               <button key={h} onClick={() => changeHand(h)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${hand === h ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                className={`py-2 rounded-lg text-xs font-medium transition-all ${hand === h ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                 {label}
               </button>
             ))}
           </div>
-          <button onClick={() => setShowLevelBrowser(true)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all hover:border-primary/60 hover:bg-primary/10 ${isChopin ? "bg-red-950/30 border-red-900/60 text-red-400" : "bg-secondary border-border text-foreground"}`}>
-            <span>{isChopin ? "💀 Chopin Mode" : `Level ${level}`}</span>
-            <ChevronRight className="w-3 h-3 opacity-60" />
-          </button>
         </div>
 
         <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
