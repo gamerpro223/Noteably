@@ -369,39 +369,59 @@ export default function SheetMusic({
   const treblePad = staffPadding(staffExtents(rightHandEvents, "treble"));
   const bassPad = staffPadding(staffExtents(leftHandEvents, "bass"));
 
-  // Count total beats to determine if we need to compress beat spacing
-  const totalBeats = measures.reduce((sum, m) => {
-    const rh = (m.rightHand || []).reduce((s, e) => s + (DUR_BEATS[e.duration] || 1), 0);
-    const lh = (m.leftHand  || []).reduce((s, e) => s + (DUR_BEATS[e.duration] || 1), 0);
-    return sum + Math.max(rh, lh, 4);
-  }, 0);
-  // Compute effective beat width — compress if content would overflow MAX_SVG_W
-  const naiveW = MARGIN_L + HEADER_W + totalBeats * BEAT_W + measures.length * MEASURE_PAD * 2 + 20;
-  const effectiveBeatW = naiveW > MAX_SVG_W
-    ? Math.max(MIN_BEAT_W, (MAX_SVG_W - MARGIN_L - HEADER_W - measures.length * MEASURE_PAD * 2 - 20) / totalBeats)
-    : BEAT_W;
+  function eventCount(measure) {
+    return (measure.rightHand || []).length + (measure.leftHand || []).length;
+  }
 
-  // Recalculate measure widths with effective beat width
-  function measureWidthDyn(measure) {
+  function hasFastNotes(measure) {
+    return [...(measure.rightHand || []), ...(measure.leftHand || [])]
+      .some(event => event.duration === "sixteenth" || event.duration === "triplet");
+  }
+
+  function beatWidthForMeasure(measure) {
+    if (hasFastNotes(measure)) return 58;
+    if (eventCount(measure) >= 16) return 50;
+    if (eventCount(measure) >= 10) return 44;
+    return BEAT_W;
+  }
+
+  function measureWidthDyn(measure, beatW) {
     const rhBeats = (measure.rightHand || []).reduce((s, e) => s + (DUR_BEATS[e.duration] || 1), 0);
     const lhBeats = (measure.leftHand  || []).reduce((s, e) => s + (DUR_BEATS[e.duration] || 1), 0);
     const beats = Math.max(rhBeats, lhBeats, 4);
-    return beats * effectiveBeatW + MEASURE_PAD * 2;
+    return beats * beatW + MEASURE_PAD * 2;
   }
-  function layoutMeasureDyn(events, startX) {
+
+  function layoutMeasureDyn(events, startX, beatW) {
     let x = startX;
     return events.map(ev => {
       const beats = DUR_BEATS[ev.duration] || 1;
-      const cx = x + beats * effectiveBeatW / 2;
-      x += beats * effectiveBeatW;
+      const cx = x + beats * beatW / 2;
+      x += beats * beatW;
       return { ...ev, cx, beats };
     });
   }
 
-  // Calculate widths
-  const mWidths = measures.map(m => measureWidthDyn(m));
-  const totalContentW = mWidths.reduce((a, b) => a + b, 0);
-  const svgW = Math.max(320, MARGIN_L + HEADER_W + totalContentW + 20);
+  const measureLayouts = measures.map((measure) => {
+    const beatW = beatWidthForMeasure(measure);
+    return { measure, beatW, width: measureWidthDyn(measure, beatW) };
+  });
+
+  const maxSystemContentW = MAX_SVG_W - MARGIN_L - HEADER_W - 20;
+  const systems = [];
+  let currentSystem = [];
+  let currentWidth = 0;
+  for (const item of measureLayouts) {
+    const wouldOverflow = currentSystem.length > 0 && currentWidth + item.width > maxSystemContentW;
+    if (wouldOverflow) {
+      systems.push(currentSystem);
+      currentSystem = [];
+      currentWidth = 0;
+    }
+    currentSystem.push(item);
+    currentWidth += item.width;
+  }
+  if (currentSystem.length) systems.push(currentSystem);
 
   // Staff positions, padded so generated ledger-line notes do not clip.
   const TOP_PAD = 18;
@@ -411,20 +431,18 @@ export default function SheetMusic({
   const BASS_TOP = showGrand
     ? TREBLE_TOP + STAFF_H + treblePad.below + GRAND_GAP + bassPad.above
     : SINGLE_TOP;
-  const svgH = showGrand
+  const systemH = showGrand
     ? BASS_TOP + STAFF_H + bassPad.below + 18
     : SINGLE_TOP + STAFF_H + singlePad.below + 18;
+  const SYSTEM_GAP = 26;
+  const svgH = systems.length * systemH + Math.max(0, systems.length - 1) * SYSTEM_GAP;
+  const svgW = Math.max(
+    320,
+    ...systems.map(system => MARGIN_L + HEADER_W + system.reduce((sum, item) => sum + item.width, 0) + 20)
+  );
 
   // Grand staff brace + connecting line
   const staffColor = "hsl(45,15%,50%)";
-
-  // Build measure x positions
-  const measureXs = [];
-  let curX = MARGIN_L + HEADER_W;
-  for (let i = 0; i < measures.length; i++) {
-    measureXs.push(curX);
-    curX += mWidths[i];
-  }
 
   // Only highlight if notes are being played (non-empty)
   const hls = highlightNotes.length > 0 ? new Set(highlightNotes) : new Set();
@@ -436,73 +454,79 @@ export default function SheetMusic({
       className={`select-none ${className}`}
       style={{ maxWidth: svgW, display: "block" }}
     >
-      {/* Grand staff connecting line on left */}
-      {showGrand && (
-        <line
-          x1={MARGIN_L + CLEF_W - 6} y1={TREBLE_TOP}
-          x2={MARGIN_L + CLEF_W - 6} y2={BASS_TOP + STAFF_H}
-          stroke={staffColor} strokeWidth={2}
-        />
-      )}
-
-      {/* Clefs */}
-      {showRH && <TrebleClef x={MARGIN_L} staffTop={TREBLE_TOP} />}
-      {showLH && <BassClef x={MARGIN_L} staffTop={showGrand ? BASS_TOP : TREBLE_TOP} />}
-
-      {/* Time signature */}
-      {showRH && <TimeSignature x={MARGIN_L + CLEF_W + 10} staffTop={TREBLE_TOP} top={4} bottom={4} />}
-      {showLH && <TimeSignature x={MARGIN_L + CLEF_W + 10} staffTop={showGrand ? BASS_TOP : TREBLE_TOP} top={4} bottom={4} />}
-
-      {/* Staff lines (full width) */}
-      {showRH && <StaffLines x={MARGIN_L + CLEF_W - 4} width={svgW - MARGIN_L - CLEF_W + 4} staffTop={TREBLE_TOP} />}
-      {showLH && <StaffLines x={MARGIN_L + CLEF_W - 4} width={svgW - MARGIN_L - CLEF_W + 4} staffTop={showGrand ? BASS_TOP : TREBLE_TOP} />}
-
-      {/* Opening barline */}
-      {showGrand ? (
-        <Barline x={MARGIN_L + HEADER_W - 4} top={TREBLE_TOP} bottom={BASS_TOP + STAFF_H} />
-      ) : (
-        <Barline x={MARGIN_L + HEADER_W - 4} top={(showRH ? TREBLE_TOP : BASS_TOP)} bottom={(showRH ? TREBLE_TOP : BASS_TOP) + STAFF_H} />
-      )}
-
-      {/* Measures */}
-      {measures.map((m, mi) => {
-        const mx = measureXs[mi];
-        const mw = mWidths[mi];
-        const rhEvents = layoutMeasureDyn(m.rightHand || [], mx + MEASURE_PAD);
-        const lhEvents = layoutMeasureDyn(m.leftHand  || [], mx + MEASURE_PAD);
-        const isLast = mi === measures.length - 1;
-        const bx = mx + mw;
+      {systems.map((system, systemIndex) => {
+        const systemY = systemIndex * (systemH + SYSTEM_GAP);
+        const trebleTop = TREBLE_TOP + systemY;
+        const bassTop = BASS_TOP + systemY;
+        const staffTop = showRH ? trebleTop : bassTop;
+        const systemW = MARGIN_L + HEADER_W + system.reduce((sum, item) => sum + item.width, 0) + 20;
+        let curX = MARGIN_L + HEADER_W;
 
         return (
-          <g key={`m${mi}`}>
-            {/* Right hand notes */}
-            {showRH && renderMeasureEvents({
-              events: rhEvents,
-              staffTop: TREBLE_TOP,
-              clef: "treble",
-              highlightNotes: hls,
-              stemUp: null,
-              onNoteClick,
-            })}
-            {/* Left hand notes */}
-            {showLH && renderMeasureEvents({
-              events: lhEvents,
-              staffTop: showGrand ? BASS_TOP : TREBLE_TOP,
-              clef: "bass",
-              highlightNotes: hls,
-              stemUp: null,
-              onNoteClick,
-            })}
-            {/* Barline */}
-            {isLast ? (
-              showGrand
-                ? <FinalBarline x={bx - 2} top={TREBLE_TOP} bottom={BASS_TOP + STAFF_H} />
-                : <FinalBarline x={bx - 2} top={showRH ? TREBLE_TOP : BASS_TOP} bottom={(showRH ? TREBLE_TOP : BASS_TOP) + STAFF_H} />
-            ) : (
-              showGrand
-                ? <Barline x={bx - 2} top={TREBLE_TOP} bottom={BASS_TOP + STAFF_H} />
-                : <Barline x={bx - 2} top={showRH ? TREBLE_TOP : BASS_TOP} bottom={(showRH ? TREBLE_TOP : BASS_TOP) + STAFF_H} />
+          <g key={`system-${systemIndex}`}>
+            {showGrand && (
+              <line
+                x1={MARGIN_L + CLEF_W - 6} y1={trebleTop}
+                x2={MARGIN_L + CLEF_W - 6} y2={bassTop + STAFF_H}
+                stroke={staffColor} strokeWidth={2}
+              />
             )}
+
+            {showRH && <TrebleClef x={MARGIN_L} staffTop={trebleTop} />}
+            {showLH && <BassClef x={MARGIN_L} staffTop={showGrand ? bassTop : staffTop} />}
+
+            {showRH && <TimeSignature x={MARGIN_L + CLEF_W + 10} staffTop={trebleTop} top={4} bottom={4} />}
+            {showLH && <TimeSignature x={MARGIN_L + CLEF_W + 10} staffTop={showGrand ? bassTop : staffTop} top={4} bottom={4} />}
+
+            {showRH && <StaffLines x={MARGIN_L + CLEF_W - 4} width={systemW - MARGIN_L - CLEF_W + 4} staffTop={trebleTop} />}
+            {showLH && <StaffLines x={MARGIN_L + CLEF_W - 4} width={systemW - MARGIN_L - CLEF_W + 4} staffTop={showGrand ? bassTop : staffTop} />}
+
+            {showGrand ? (
+              <Barline x={MARGIN_L + HEADER_W - 4} top={trebleTop} bottom={bassTop + STAFF_H} />
+            ) : (
+              <Barline x={MARGIN_L + HEADER_W - 4} top={staffTop} bottom={staffTop + STAFF_H} />
+            )}
+
+            {system.map((item, measureIndex) => {
+              const mx = curX;
+              curX += item.width;
+              const m = item.measure;
+              const rhEvents = layoutMeasureDyn(m.rightHand || [], mx + MEASURE_PAD, item.beatW);
+              const lhEvents = layoutMeasureDyn(m.leftHand || [], mx + MEASURE_PAD, item.beatW);
+              const globalIndex = systems.slice(0, systemIndex).reduce((sum, previous) => sum + previous.length, 0) + measureIndex;
+              const isLast = globalIndex === measures.length - 1;
+              const bx = mx + item.width;
+
+              return (
+                <g key={`m${globalIndex}`}>
+                  {showRH && renderMeasureEvents({
+                    events: rhEvents,
+                    staffTop: trebleTop,
+                    clef: "treble",
+                    highlightNotes: hls,
+                    stemUp: null,
+                    onNoteClick,
+                  })}
+                  {showLH && renderMeasureEvents({
+                    events: lhEvents,
+                    staffTop: showGrand ? bassTop : staffTop,
+                    clef: "bass",
+                    highlightNotes: hls,
+                    stemUp: null,
+                    onNoteClick,
+                  })}
+                  {isLast ? (
+                    showGrand
+                      ? <FinalBarline x={bx - 2} top={trebleTop} bottom={bassTop + STAFF_H} />
+                      : <FinalBarline x={bx - 2} top={staffTop} bottom={staffTop + STAFF_H} />
+                  ) : (
+                    showGrand
+                      ? <Barline x={bx - 2} top={trebleTop} bottom={bassTop + STAFF_H} />
+                      : <Barline x={bx - 2} top={staffTop} bottom={staffTop + STAFF_H} />
+                  )}
+                </g>
+              );
+            })}
           </g>
         );
       })}
