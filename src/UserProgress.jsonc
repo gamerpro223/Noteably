@@ -1,0 +1,76 @@
+{
+  "name": "UserProgress",
+  "type": "object",
+  "properties": {
+    "current_level": {
+      "type": "integer",
+      "description": "Current difficulty level (1-20)",
+      "default": 1
+    },
+    "total_xp": {
+      "type": "integer",
+      "description": "Total XP earned",
+      "default": 0
+    },
+    "level_xp": {
+      "type": "integer",
+      "description": "XP earned toward the current level-up test",
+      "default": 0
+    },
+    "daily_streak_sessions": {
+      "type": "integer",
+      "description": "Number of completed daily streak sessions on the current level",
+      "default": 0
+    },
+    "last_daily_reward_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date the main daily streak XP reward was granted"
+    },
+    "current_streak": {
+      "type": "integer",
+      "description": "Current consecutive day streak",
+      "default": 0
+    },
+    "longest_streak": {
+      "type": "integer",
+      "description": "Longest streak ever achieved",
+      "default": 0
+    },
+    "daily_goal_minutes": {
+      "type": "integer",
+      "description": "Daily practice goal in minutes",
+      "default": 10
+    },
+    "total_puzzles_completed": {
+      "type": "integer",
+      "description": "Lifetime puzzles completed",
+      "default": 0
+    },
+    "last_practice_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date the user practiced"
+    },
+    "pending_level_test": {
+      "type": "boolean",
+      "description": "True when user has earned a level-up test but hasn't taken it yet",
+      "default": false
+    },
+    "level_test_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the level-up test was earned"
+    },
+    "recap_test_pending": {
+      "type": "boolean",
+      "description": "True when a next-day recap test is available",
+      "default": false
+    },
+    "recap_test_level": {
+      "type": "integer",
+      "description": "Level the recap test covers"
+    }
+  },
+  "required": []
+}
