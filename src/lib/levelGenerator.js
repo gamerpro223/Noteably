@@ -34,10 +34,10 @@ const LEVEL_RULES = {
   9: { difficulty: 56, measures: 2, title: "Chord progression", hint: "Move between chord shapes" },
   10: { difficulty: 62, measures: 2, title: "Chord inversions", hint: "Same chord, different shape" },
   11: { difficulty: 68, measures: 2, title: "Accidentals and rhythm", hint: "Notice sharps and dotted rhythms" },
-  12: { difficulty: 60, measures: 2, title: "Left hand pattern", hint: "Bass clef, steady motion" },
-  13: { difficulty: 70, measures: 2, title: "Two-hand coordination", hint: "Melody over simple bass" },
-  14: { difficulty: 74, measures: 2, title: "Two-hand harmony", hint: "Melody over chord support" },
-  15: { difficulty: 80, measures: 3, title: "Two-hand challenge", hint: "Both hands change roles" },
+  12: { difficulty: 72, measures: 2, title: "First real two-hand jump", hint: "Read both staves together" },
+  13: { difficulty: 80, measures: 2, title: "Broken-bass coordination", hint: "Eighth notes in both hands" },
+  14: { difficulty: 88, measures: 3, title: "Sevenths and syncopation", hint: "Accidentals, 7ths, and uneven rhythm" },
+  15: { difficulty: 94, measures: 4, title: "Independent hands", hint: "Both hands move with different rhythms" },
   16: { difficulty: 84, measures: 3, title: "Advanced coordination", hint: "Sixteenth notes with bass movement" },
   17: { difficulty: 88, measures: 3, title: "Dense reading", hint: "Accidentals and wider shapes" },
   18: { difficulty: 92, measures: 4, title: "Virtuoso prep", hint: "Fast arpeggios and wide movement" },
@@ -160,6 +160,54 @@ function makeBoth(level, key, type, title, measurePairs, hint, overrides = {}) {
     })),
     hint,
     ...overrides,
+  });
+}
+
+function playableEvents(events = []) {
+  return events.filter(event => !event.rest && event.keys?.length);
+}
+
+function hasPlayable(events = []) {
+  return playableEvents(events).length > 0;
+}
+
+function copyExerciseForHand(exercise, hand) {
+  const selected = hand === "left" ? "leftHand" : "rightHand";
+  const measures = (exercise.measures || []).map((measure, index) => ({
+    number: index + 1,
+    rightHand: hand === "right" ? [...(measure[selected] || [])] : [],
+    leftHand: hand === "left" ? [...(measure[selected] || [])] : [],
+  }));
+
+  return makeExercise({
+    level: exercise.level,
+    mode: hand,
+    type: exercise.type === "two-hand" ? "sequence" : exercise.type,
+    title: `${exercise.title} (${hand === "left" ? "left hand" : "right hand"})`,
+    keySignature: exercise.keySignature,
+    timeSignature: exercise.timeSignature,
+    difficultyScore: Math.max(1, exercise.difficultyScore - 6),
+    measures,
+    hint: hand === "left" ? "Left hand only." : "Right hand only.",
+    requiredAccuracy: exercise.requiredAccuracy,
+    maxMistakes: exercise.maxMistakes,
+    timeLimit: exercise.timeLimit,
+  });
+}
+
+function combineHands(level, key, rightExercise, leftExercise, title, hint, overrides = {}) {
+  const measureCount = Math.max(rightExercise.measures?.length || 0, leftExercise.measures?.length || 0);
+  const pairs = Array.from({ length: measureCount }, (_, index) => ({
+    rightHand: rightExercise.measures?.[index]?.rightHand || [],
+    leftHand: leftExercise.measures?.[index]?.leftHand || [],
+  }));
+  const cleanOverrides = {};
+  for (const [keyName, value] of Object.entries(overrides)) {
+    if (value !== undefined) cleanOverrides[keyName] = value;
+  }
+
+  return makeBoth(level, key, overrides.type || "two-hand", title, pairs, hint, {
+    ...cleanOverrides,
   });
 }
 
@@ -308,22 +356,69 @@ function twoHandLevel(level, key) {
   const progression = progressionFor(key);
 
   if (level === 12) {
-    const [m1, m2] = leftHandPattern(key, progression);
-    return makeOneHand(level, "left", key, "sequence", `${key.name} left hand pattern`, [m1, m2], rule.hint);
+    const [lh1, lh2] = leftHandPattern(key, progression);
+    const melody = [...runDegrees(8), ...runDegrees(9).reverse()].slice(0, 8);
+    const pairs = [0, 1].map((measureIndex) => ({
+      rightHand: eventList(
+        melody.slice(measureIndex * 4, measureIndex * 4 + 4).map(d => scaleNote(key, d, "right")),
+        ["quarter", "quarter", "eighth", "eighth"]
+      ),
+      leftHand: measureIndex === 0 ? lh1 : lh2,
+    }));
+    return makeBoth(level, key, "two-hand", `${key.name} ${rule.title.toLowerCase()}`, pairs, rule.hint);
   }
 
-  if (level <= 14) {
-    const melody = [...runDegrees(level), ...runDegrees(level).reverse()].slice(0, 8);
+  if (level === 13) {
+    const melody = [...runDegrees(13), ...runDegrees(13).reverse()].slice(0, 16);
+    const [lh1, lh2] = leftHandPattern(key, progression);
+    const pairs = [0, 1].map((measureIndex) => ({
+      rightHand: eventList(
+        melody.slice(measureIndex * 8, measureIndex * 8 + 8).map((d, index) => {
+          const base = scaleNote(key, d, "right", index > 4 ? 1 : 0);
+          return index % 4 === 2 ? chromaticPassing(base, chance(0.5) ? 1 : -1) : base;
+        }),
+        Array(8).fill("eighth")
+      ),
+      leftHand: measureIndex === 0 ? lh1 : lh2,
+    }));
+    return makeBoth(level, key, "two-hand", `${key.name} ${rule.title.toLowerCase()}`, pairs, rule.hint);
+  }
+
+  if (level === 14) {
+    const measureCount = LEVEL_RULES[level].measures;
     const pairs = [0, 1].map(measureIndex => {
-      const degrees = melody.slice(measureIndex * 4, measureIndex * 4 + 4);
+      const degrees = runDegrees(14).slice(0, 4);
       const prog = progression.degrees.slice(measureIndex * 2, measureIndex * 2 + 2);
       return {
-        rightHand: eventList(degrees.map(d => scaleNote(key, d, "right")), ["quarter", "quarter", "quarter", "quarter"]),
-        leftHand: level === 13
-          ? eventList([scaleNote(key, prog[0], "left"), scaleNote(key, prog[1] || prog[0], "left"), scaleNote(key, prog[0], "left"), scaleNote(key, prog[1] || prog[0], "left")], ["quarter", "quarter", "quarter", "quarter"])
-          : eventList([chordForDegree(key, prog[0], "left", 0, 2), chordForDegree(key, prog[1] || prog[0], "left", 0, 2), chordForDegree(key, prog[0], "left", 0, 2), chordForDegree(key, 5, "left", 0, 2)], ["quarter", "quarter", "quarter", "quarter"]),
+        rightHand: eventList([
+          chordForDegree(key, prog[0], "right", 0, 4),
+          chromaticPassing(scaleNote(key, degrees[1], "right"), chance(0.5) ? 1 : -1),
+          chordForDegree(key, prog[1] || prog[0], "right", 0, 3),
+          scaleNote(key, degrees[3], "right", 1),
+        ], ["dotted-quarter", "eighth", "quarter", "quarter"]),
+        leftHand: eventList([
+          chordForDegree(key, prog[0], "left", 0, 3),
+          scaleNote(key, prog[1] || prog[0], "left"),
+          chordForDegree(key, 5, "left", 0, 3),
+        ], ["quarter", "quarter", "half"]),
       };
     });
+    while (pairs.length < measureCount) {
+      const degree = progression.degrees[pairs.length % progression.degrees.length];
+      pairs.push({
+        rightHand: eventList([
+          chordForDegree(key, degree, "right", 0, 4),
+          scaleNote(key, degree + 6, "right", 1),
+          chromaticPassing(scaleNote(key, degree + 4, "right", 1), 1),
+          chordForDegree(key, degree + 1, "right", 0, 4),
+        ], ["quarter", "eighth", "eighth", "half"]),
+        leftHand: eventList([
+          chordForDegree(key, degree, "left", 0, 3),
+          chordForDegree(key, degree + 3, "left", 0, 3),
+          scaleNote(key, degree, "left"),
+        ], ["quarter", "quarter", "half"]),
+      });
+    }
     return makeBoth(level, key, "two-hand", `${key.name} ${rule.title.toLowerCase()}`, pairs, rule.hint);
   }
 
@@ -376,10 +471,26 @@ function twoHandLevel(level, key) {
 export function generateRuleBasedExercise(level, hand = "right") {
   const l = Math.max(1, Math.min(20, Number(level) || 1));
   const key = keyForLevel(l);
+  const requestedHand = hand === "left" ? "left" : hand === "both" ? "both" : "right";
 
-  if (l <= 6) return simpleLevel(l, hand, key);
-  if (l <= 11) return intermediateOneHand(l, hand, key);
-  return twoHandLevel(l, key);
+  if (requestedHand === "both") {
+    if (l <= 11) {
+      const right = l <= 6 ? simpleLevel(l, "right", key) : intermediateOneHand(l, "right", key);
+      const left = l <= 6 ? simpleLevel(l, "left", key) : intermediateOneHand(l, "left", key);
+      return combineHands(l, key, right, left, `${key.name} both-hand level ${l}`, "Read the treble and bass staves together.", {
+        difficultyScore: Math.min(100, LEVEL_RULES[l].difficulty + 8),
+      });
+    }
+    return twoHandLevel(l, key);
+  }
+
+  if (l <= 6) return simpleLevel(l, requestedHand, key);
+  if (l <= 11) return intermediateOneHand(l, requestedHand, key);
+
+  const both = twoHandLevel(l, key);
+  const selected = copyExerciseForHand(both, requestedHand);
+  const hasSelectedNotes = selected.measures.some(m => hasPlayable(requestedHand === "left" ? m.leftHand : m.rightHand));
+  return hasSelectedNotes ? selected : intermediateOneHand(11, requestedHand, key);
 }
 
 export function generateRuleBasedChopinExercise() {
