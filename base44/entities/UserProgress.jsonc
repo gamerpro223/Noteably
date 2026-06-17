@@ -12,6 +12,21 @@
       "description": "Total XP earned",
       "default": 0
     },
+    "level_xp": {
+      "type": "integer",
+      "description": "XP earned toward the current level-up test",
+      "default": 0
+    },
+    "daily_streak_sessions": {
+      "type": "integer",
+      "description": "Number of completed daily streak sessions on the current level",
+      "default": 0
+    },
+    "last_daily_reward_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date the main daily streak XP reward was granted"
+    },
     "current_streak": {
       "type": "integer",
       "description": "Current consecutive day streak",
